@@ -1962,11 +1962,8 @@ void SurfaceFlinger::setVsyncEnabled(bool enabled) {
 }
 
 SurfaceFlinger::FenceWithFenceTime SurfaceFlinger::previousFrameFence() {
-    const auto now = systemTime();
-    const auto vsyncPeriod = mScheduler->getDisplayStatInfo(now).vsyncPeriod;
-    const bool expectedPresentTimeIsTheNextVsync = mExpectedPresentTime - now <= vsyncPeriod;
-    return expectedPresentTimeIsTheNextVsync ? mPreviousPresentFences[0]
-                                             : mPreviousPresentFences[1];
+     return mVsyncModulator->getVsyncConfig().sfOffset >= 0 ? mPreviousPresentFences[0]
+                                                           : mPreviousPresentFences[1];
 }
 
 bool SurfaceFlinger::previousFramePending(int graceTimeMs) {
@@ -2563,7 +2560,9 @@ void SurfaceFlinger::postComposition() {
     mTimeStats->recordDisplayEventConnectionCount(sfConnections + appConnections);
 
     if (isDisplayConnected && !display->isPoweredOn()) {
+#ifndef DISABLE_POSTRENDER_CLEANUP
         getRenderEngine().cleanupPostRender();
+#endif
         return;
     }
 
@@ -2582,8 +2581,10 @@ void SurfaceFlinger::postComposition() {
     }
     getBE().mLastSwapTime = currentTime;
 
+#ifndef DISABLE_POSTRENDER_CLEANUP
     // Cleanup any outstanding resources due to rendering a prior frame.
     getRenderEngine().cleanupPostRender();
+#endif
 
     {
         std::lock_guard lock(mTexturePoolMutex);
@@ -3044,7 +3045,9 @@ void SurfaceFlinger::processDisplayChanged(const wp<IBinder>& displayToken,
 
     // Recreate the DisplayDevice if the surface or sequence ID changed.
     if (currentBinder != drawingBinder || currentState.sequenceId != drawingState.sequenceId) {
+#ifndef DISABLE_POSTRENDER_CLEANUP
         getRenderEngine().cleanFramebufferCache();
+#endif
 
         if (const auto display = getDisplayDeviceLocked(displayToken)) {
             display->disconnect();
